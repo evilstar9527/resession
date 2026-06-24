@@ -127,6 +127,8 @@ const TABS = [
 const ESC = '\x1b';
 const HIDE_CURSOR = `${ESC}[?25l`;
 const SHOW_CURSOR = `${ESC}[?25h`;
+const ALT_ON = `${ESC}[?1049h`; // enter alternate screen (so we restore on exit)
+const ALT_OFF = `${ESC}[?1049l`; // leave alternate screen, restoring prior content
 const MOUSE_ON = `${ESC}[?1000h${ESC}[?1006h`;
 const MOUSE_OFF = `${ESC}[?1000l${ESC}[?1006l`;
 const HOME = `${ESC}[H`;
@@ -263,10 +265,10 @@ export async function pickSession(initialSessions) {
     function cleanup() {
       if (done) return;
       done = true;
+      clearEscTimer();
       inp.removeListener('data', onData);
       out.removeListener('resize', render);
-      out.write(MOUSE_OFF + SHOW_CURSOR);
-      out.write(`${ESC}[2J${HOME}`); // clear so the resumed agent starts on a clean screen
+      out.write(MOUSE_OFF + SHOW_CURSOR + ALT_OFF); // leaving alt screen restores prior terminal
       if (inp.isTTY) inp.setRawMode(false);
       inp.pause();
     }
@@ -323,9 +325,44 @@ export async function pickSession(initialSessions) {
       }
     }
 
-    function onData(buf) {
-      const s = buf.toString('utf8');
+    // --- input handling -----------------------------------------------------
+    // A lone ESC byte is ambiguous: it may be the user pressing Esc, OR the first
+    // byte of an arrow/mouse sequence that the terminal delivered in a separate
+    // chunk. We debounce: hold a solo ESC briefly; if more bytes arrive they get
+    // prepended to the next chunk, otherwise it's treated as a real Esc press.
+    let pendingEsc = '';
+    let escTimer = null;
 
+    function clearEscTimer() {
+      if (escTimer) {
+        clearTimeout(escTimer);
+        escTimer = null;
+      }
+    }
+
+    function onData(buf) {
+      let s = buf.toString('utf8');
+      if (pendingEsc) {
+        s = pendingEsc + s;
+        pendingEsc = '';
+        clearEscTimer();
+      }
+      // Solo ESC: wait to see if a sequence completes.
+      if (s === ESC) {
+        pendingEsc = ESC;
+        escTimer = setTimeout(() => {
+          pendingEsc = '';
+          escTimer = null;
+          handleKey(ESC); // nothing followed -> a genuine Esc
+        }, 40);
+        if (escTimer.unref) escTimer.unref();
+        return;
+      }
+      handleKey(s);
+    }
+
+    function handleKey(s) {
+      if (done) return;
       if (s === '\x03') { finish(null); return; } // Ctrl-C always quits
 
       // mouse wheel (SGR): ESC [ < code ; x ; y (M|m)
@@ -436,7 +473,7 @@ export async function pickSession(initialSessions) {
     inp.resume();
     inp.on('data', onData);
     out.on('resize', render);
-    out.write(HIDE_CURSOR + MOUSE_ON);
+    out.write(ALT_ON + HIDE_CURSOR + MOUSE_ON);
     render();
   });
 }

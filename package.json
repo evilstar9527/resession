@@ -1,0 +1,30 @@
+{
+  "name": "resession",
+  "version": "0.1.0",
+  "description": "Global LRU session picker for Claude Code & Codex — list every session across all projects by most-recent-use and resume natively.",
+  "type": "module",
+  "bin": {
+    "resession": "./bin/resession.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node bin/resession.js"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "codex",
+    "session",
+    "resume",
+    "tui",
+    "lru"
+  ],
+  "license": "MIT"
+}

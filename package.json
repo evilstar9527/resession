@@ -4,7 +4,7 @@
   "description": "Global LRU session picker for Claude Code & Codex — list every session across all projects by most-recent-use and resume natively.",
   "type": "module",
   "bin": {
-    "resession": "./bin/resession.js"
+    "resession": "bin/resession.js"
   },
   "files": [
     "bin",
@@ -26,5 +26,13 @@
     "tui",
     "lru"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evilstar9527/resession.git"
+  },
+  "homepage": "https://github.com/evilstar9527/resession#readme",
+  "bugs": {
+    "url": "https://github.com/evilstar9527/resession/issues"
+  }
 }

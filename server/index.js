@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createStore } from './store.js';
+import { DeviceAuth, activationPage } from './device.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.DATA_DIR || '/data';
@@ -29,6 +30,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 // --------------------------------------------------------------------------
 
 const store = await createStore(DATA_DIR);
+const deviceAuth = new DeviceAuth(DATA_DIR);
 
 // File path for a session's JSONL. Components are sanitized to stay inside DATA_DIR.
 function jsonlPath(deviceId, source, sessionId) {
@@ -47,14 +49,27 @@ function send(res, code, body, headers = {}) {
   res.end(payload);
 }
 
+// Build the externally-visible base URL so the verification link points at the
+// public domain (behind Cloudflare Tunnel / Traefik), not the internal host:port.
+function publicBase(req) {
+  const envBase = (process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  if (envBase) return envBase;
+  const proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'http';
+  const host = (req.headers['x-forwarded-host'] || req.headers['host'] || 'localhost').split(',')[0].trim();
+  return `${proto}://${host}`;
+}
+
 function authed(req) {
   const h = req.headers['authorization'] || '';
   const m = h.match(/^Bearer\s+(.+)$/i);
   if (!m) return false;
-  // constant-time compare
-  const a = Buffer.from(m[1]);
+  const presented = m[1];
+  // Accept the shared master token (constant-time) ...
+  const a = Buffer.from(presented);
   const b = Buffer.from(TOKEN);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+  // ... or any per-device token minted via the browser approval flow.
+  return deviceAuth.isValidToken(presented);
 }
 
 function readBody(req, limit = MAX_BODY) {
@@ -94,6 +109,40 @@ const server = http.createServer(async (req, res) => {
     // health (no auth)
     if (req.method === 'GET' && url.pathname === '/healthz') {
       return send(res, 200, { ok: true });
+    }
+
+    // ---- device authorization flow (no auth; this is how you GET a token) ----
+
+    // CLI requests a device + user code.
+    if (req.method === 'POST' && url.pathname === '/device/code') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const out = deviceAuth.requestCode(body.deviceName);
+      const base = publicBase(req);
+      out.verification_uri = `${base}/activate?code=${out.user_code}`;
+      return send(res, 200, out);
+    }
+
+    // Browser opens the approval page.
+    if (req.method === 'GET' && url.pathname === '/activate') {
+      const code = url.searchParams.get('code') || '';
+      const found = deviceAuth.lookupByUserCode(code);
+      const html = found
+        ? activationPage(found.userCode, found.deviceName, found.approved ? 'approved' : 'pending')
+        : activationPage(code, '', 'notfound');
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(html);
+    }
+
+    // Browser clicked "Authorize".
+    if (req.method === 'POST' && url.pathname === '/device/approve') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      return send(res, 200, deviceAuth.approve(body.user_code));
+    }
+
+    // CLI polls for the minted token.
+    if (req.method === 'POST' && url.pathname === '/device/token') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      return send(res, 200, deviceAuth.poll(body.device_code));
     }
 
     if (!authed(req)) return send(res, 401, { error: 'unauthorized' });

@@ -44,7 +44,8 @@ Usage:
   resession <id>         resume by sessionId (or file name)
 
 Cross-device (optional — only after \`login\`):
-  resession login <url> <token> [--device <name>]   connect to a sync server
+  resession login <url>                             browser-authorize this device
+  resession login <url> <token>                     log in with a token (manual)
   resession push                                    upload local sessions
   resession pull                                    refresh remote session list
   resession logout                                  disconnect

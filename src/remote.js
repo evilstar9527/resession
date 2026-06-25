@@ -139,3 +139,31 @@ export async function getSessionJsonl(cfg, deviceId, source, sessionId) {
   if (r.status !== 200) throw new Error(`fetch failed: HTTP ${r.status}`);
   return r.body.toString('utf8');
 }
+
+// --------------------------------------------------------------------------
+// device authorization flow (browser login)
+// --------------------------------------------------------------------------
+
+// These three talk to a server we don't have a token for yet, so they use a
+// token-less base config (just the URL).
+function urlCfg(baseUrl) {
+  return { url: baseUrl.replace(/\/+$/, ''), token: '' };
+}
+
+export async function requestDeviceCode(baseUrl, deviceName) {
+  const r = await request(urlCfg(baseUrl), 'POST', '/device/code', {
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceName }),
+  });
+  if (r.status !== 200) throw new Error(`device/code failed: HTTP ${r.status}`);
+  return JSON.parse(r.body.toString('utf8'));
+}
+
+export async function pollDeviceToken(baseUrl, deviceCode) {
+  const r = await request(urlCfg(baseUrl), 'POST', '/device/token', {
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ device_code: deviceCode }),
+  });
+  if (r.status !== 200) throw new Error(`device/token failed: HTTP ${r.status}`);
+  return JSON.parse(r.body.toString('utf8')); // {status:'pending'|'approved'|'expired', token?}
+}

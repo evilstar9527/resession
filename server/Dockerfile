@@ -1,8 +1,7 @@
-# better-sqlite3 ships prebuilt binaries for node:22 on Debian. If a prebuild is
-# missing for the platform, npm falls back to compiling from source, which needs
-# python3/make/g++ — install them so the build never fails, then remove to keep
-# the image small.
-FROM node:22-slim
+# Base image pulled through the user's cloudflare-docker-proxy so the build does
+# not depend on auth.docker.io, which is unreliable from this host.
+# To build against Docker Hub directly, swap this back to `node:22-slim`.
+FROM docker.evilstarss.com/library/node:22-slim
 
 WORKDIR /app
 

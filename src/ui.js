@@ -181,10 +181,18 @@ export function renderTable(sessions, nowMs = Date.now()) {
 // interactive picker (raw mode, zero deps)
 // --------------------------------------------------------------------------
 
-const TABS = [
+// Two tab layouts. When the list has remote sessions, group by origin
+// (local/remote) — that's the useful axis once cross-device sync is on.
+// Otherwise keep the original by-agent grouping.
+const TABS_BY_AGENT = [
   { key: 'all', label: 'All', match: () => true },
   { key: 'claude', label: 'Claude', match: (s) => s.source === 'claude' },
   { key: 'codex', label: 'Codex', match: (s) => s.source === 'codex' },
+];
+const TABS_BY_ORIGIN = [
+  { key: 'all', label: 'All', match: () => true },
+  { key: 'local', label: 'Local', match: (s) => s.local !== false },
+  { key: 'remote', label: 'Remote', match: (s) => s.local === false },
 ];
 
 // ANSI
@@ -216,6 +224,10 @@ function matchesQuery(session, term) {
 export async function pickSession(initialSessions) {
   const out = process.stdout;
   const inp = process.stdin;
+
+  // Pick tab layout based on whether remote sessions are present.
+  const hasRemote = initialSessions.some((s) => s.local === false);
+  const TABS = hasRemote ? TABS_BY_ORIGIN : TABS_BY_AGENT;
 
   const state = {
     sessions: initialSessions.slice(),

@@ -34,7 +34,7 @@ Options:
 | Flag | Meaning |
 |------|---------|
 | `--here` | Only sessions from the current git repo's worktrees |
-| `--all` | Parse/show every session (default: newest 50) |
+| `--all` | Parse/show every session (default: newest 200) |
 | `--limit <N>` | Cap how many sessions to show/parse |
 | `--local` | Only local sessions (ignore remote) |
 | `--remote` | Only remote sessions |
@@ -42,25 +42,54 @@ Options:
 | `--dry-run` | Print the resume command instead of executing it |
 | `-h`, `--help` / `-v`, `--version` | Help / version |
 
-In the picker: type to fuzzy-filter (by project, title, branch, agent), arrow-keys to move,
-**Enter** to open, **Esc**/**Ctrl-C** to cancel.
+### In the interactive picker
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` / `j` `k` / mouse wheel | Move |
+| `←` `→` / `h` `l` | Switch tab |
+| `PgUp` `PgDn`, `g` `G` | Page / jump to first–last |
+| `Enter` | Open (resume if local, view transcript if remote) |
+| `r` | Rename the selected session |
+| `d` | Delete (soft-delete to trash, with confirm) |
+| `/` | Fuzzy search (project, title, branch, agent) |
+| `Esc` / `q` / `Ctrl-C` | Quit |
+
+Tabs adapt to your data: with only local sessions they group by agent
+(**All / Claude / Codex**); once remote sessions are present they group by origin
+(**All / Local / Remote**).
+
+Renames are stored by `resession` itself (in `~/.resession/labels.json`) and never modify
+the original session files; renamed rows show a `★`. Deletes move the JSONL into
+`~/.resession/trash/` (recoverable), they are not permanently removed.
 
 ## Cross-device sync (optional)
 
-By default `resession` is purely local. If you run a small sync server (see
-[`server/`](server/)), you can view sessions from **all** your machines on any device.
+By default `resession` is purely local. If you run the sync server (see [`server/`](server/)),
+you can view sessions from **all** your machines on any device.
 
 ```
-resession login <url> <token> [--device <name>]   # connect to your server
-resession push                                     # upload this machine's sessions
-resession pull                                     # refresh the remote session list
-resession logout                                   # disconnect
+resession login              # browser-authorize this device (default server)
+resession login <url>        # use a specific sync server
+resession push               # upload this machine's sessions
+resession pull               # refresh the remote session list
+resession logout             # disconnect
 ```
 
-After `pull`, `resession ls` / the picker show a **device** column. Sessions from other
-machines are marked ☁ and are **read-only**: pressing Enter downloads the transcript and
-opens it in your pager (it does not try to resume on the wrong machine). Local sessions
-behave exactly as before — fully resumable. Not logging in changes nothing.
+**Login is a browser device-authorization flow** (like `gh auth login`): `resession login`
+prints a short URL + code and tries to open your browser; you click **Authorize** and the
+CLI receives a per-device token automatically — no token copy-paste. On a headless/remote
+machine, just open the printed URL on any device with a browser.
+
+- The default server URL is built in; override per-call with `resession login <url>` or set
+  `RESESSION_URL`. A manual `resession login <url> <token>` path also still works.
+- `--device <name>` labels this machine (defaults to its hostname).
+
+After `pull`, `resession ls` / the picker show a **device** column, and the picker's tabs
+switch to **All / Local / Remote**. Sessions from other machines are marked ☁ and are
+**read-only**: pressing Enter downloads the transcript and opens it in your pager (`$PAGER`,
+default `less`) instead of trying to resume on the wrong machine. Local sessions behave
+exactly as before — fully resumable. Not logging in changes nothing.
 
 > Why read-only for remote: a session is bound to its original `cwd`, code, and git state.
 > Viewing the history across devices is reliable; resuming "the work" on a machine that
@@ -84,6 +113,9 @@ Honors the same overrides as the underlying tools:
 
 - `CLAUDE_CONFIG_DIR` / `CLAUDE_HOME` — Claude home (default `~/.claude`)
 - `CODEX_HOME` — Codex home (default `~/.codex`)
+- `RESESSION_HOME` — where resession keeps its own state: config, rename labels, trash,
+  remote cache (default `~/.resession`)
+- `RESESSION_URL` — default sync-server URL for `resession login`
 
 ## Requirements
 

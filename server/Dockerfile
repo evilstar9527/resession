@@ -14,7 +14,7 @@ COPY package.json ./
 ENV npm_config_build_from_source=false
 RUN npm install --omit=dev --no-audit --no-fund || npm install --omit=dev --omit=optional --no-audit --no-fund
 
-COPY index.js store.js ./
+COPY index.js store.js device.js ./
 
 ENV PORT=8080
 ENV DATA_DIR=/data

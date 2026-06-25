@@ -30,6 +30,10 @@ function openBrowser(url) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Default sync server. `resession login` with no URL connects here; pass a URL
+// (or set RESESSION_URL) to override.
+const DEFAULT_URL = (process.env.RESESSION_URL || 'https://resession.evilstar.org').replace(/\/+$/, '');
+
 function requireConfig() {
   const cfg = loadConfig();
   if (!cfg) {
@@ -43,16 +47,21 @@ function sha256(buf) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
-// `resession login <url> [token] [--device <name>]`
-//   - with <token>: save it directly (manual / scripted path)
-//   - without:     browser device-authorization flow
+// `resession login [url] [token] [--device <name>]`
+//   - no args:        browser flow against the default server
+//   - <url>:          browser flow against that server
+//   - <url> <token>:  save token directly (manual / scripted path)
+//   - <token> only:   manual token against the default server (token isn't a URL)
 export async function cmdLogin(positional, opts) {
-  const url = positional[1];
-  const manualToken = positional[2];
-  if (!url) {
-    process.stderr.write('usage: resession login <url> [token] [--device <name>]\n');
-    return 1;
-  }
+  // positional[0] is the verb "login". Figure out url / token from the rest.
+  const a1 = positional[1];
+  const a2 = positional[2];
+  const looksUrl = (s) => typeof s === 'string' && /^https?:\/\//i.test(s);
+
+  let url, manualToken;
+  if (looksUrl(a1)) { url = a1; manualToken = a2; }
+  else { url = DEFAULT_URL; manualToken = a1; } // a1 (if any) is a token
+
   const deviceId = (opts.device || defaultDeviceId()).replace(/[^A-Za-z0-9._-]/g, '-');
   const baseUrl = url.replace(/\/+$/, '');
 

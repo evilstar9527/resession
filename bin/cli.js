@@ -24,7 +24,7 @@ import { discoverSessions, currentWorktreePaths } from '../src/discover.js';
 import { resumeSession } from '../src/resume.js';
 import { renderTable, pickSession } from '../src/ui.js';
 
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 200;
 
 function readVersion() {
   try {
@@ -123,7 +123,10 @@ async function gatherSessions(opts, limit) {
     merged.push({ ...r, local: false });
   }
   merged.sort((a, b) => ((b.updatedAt || '') < (a.updatedAt || '') ? -1 : (b.updatedAt || '') > (a.updatedAt || '') ? 1 : 0));
-  return opts.all ? merged : merged.slice(0, limit);
+  const total = merged.length;
+  const shown = opts.all ? merged : merged.slice(0, limit);
+  shown.totalAvailable = total; // so callers can warn about truncation
+  return shown;
 }
 
 // Open a remote (read-only) session: download its JSONL and show it in a pager.
@@ -207,6 +210,12 @@ async function main() {
       process.stdout.write(JSON.stringify(sessions, null, 2) + '\n');
     } else {
       process.stdout.write(renderTable(sessions) + '\n');
+      const total = sessions.totalAvailable || sessions.length;
+      if (total > sessions.length) {
+        process.stdout.write(
+          `\n… showing ${sessions.length} of ${total}. Use --all (or --limit N) to see more.\n`
+        );
+      }
     }
     return 0;
   }

@@ -85,23 +85,87 @@ function padWidth(s, width) {
 // --------------------------------------------------------------------------
 
 export function formatRows(sessions, nowMs = Date.now()) {
+  // Only surface the device column when remote sessions are present, so a purely
+  // local listing looks exactly as it did before cross-device support existed.
+  const hasRemote = sessions.some((s) => s.local === false);
   const cols = sessions.map((s) => ({
     time: relativeTime(s.updatedAt || s.createdAt, nowMs),
+    device: s.local === false ? (s.deviceId || 'remote') : '· this',
     agent: s.source,
     project: projectName(s.cwd),
     branch: s.gitBranch || '',
-    title: (s.renamed ? '★ ' : '') + (s.title || '(untitled)').replace(/\s+/g, ' ').trim(),
+    title:
+      (s.local === false ? '☁ ' : '') +
+      (s.renamed ? '★ ' : '') +
+      (s.title || '(untitled)').replace(/\s+/g, ' ').trim(),
   }));
   const w = (key, max) => Math.min(max, Math.max(0, ...cols.map((c) => strWidth(c[key]))));
   const timeW = w('time', 10);
+  const deviceW = hasRemote ? w('device', 14) : 0;
   const agentW = w('agent', 6);
   const projW = w('project', 28);
   const branchW = w('branch', 22);
-  return cols.map(
-    (c) =>
-      `${padWidth(c.time, timeW)}  ${padWidth(c.agent, agentW)}  ${padWidth(truncWidth(c.project, projW), projW)}  ` +
+  return cols.map((c) => {
+    const dev = hasRemote ? `${padWidth(truncWidth(c.device, deviceW), deviceW)}  ` : '';
+    return (
+      `${padWidth(c.time, timeW)}  ${dev}${padWidth(c.agent, agentW)}  ` +
+      `${padWidth(truncWidth(c.project, projW), projW)}  ` +
       `${padWidth(truncWidth(c.branch, branchW), branchW)}  ${truncWidth(c.title, 80)}`.trimEnd()
-  );
+    );
+  });
+}
+
+// Render a downloaded JSONL transcript into readable plain text for the pager.
+// Works for both Claude and Codex shapes; best-effort, read-only.
+export function renderTranscript(jsonl, session) {
+  const out = [];
+  const head = session
+    ? `${session.source} · ${session.deviceId || 'remote'} · ${projectName(session.cwd)} · ${session.title || ''}`
+    : '';
+  if (head) out.push(head, '─'.repeat(Math.min(head.length, 80)), '');
+
+  for (const line of jsonl.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    let rec;
+    try { rec = JSON.parse(t); } catch { continue; }
+    const msg = extractMessage(rec);
+    if (msg) out.push(msg, '');
+  }
+  if (out.length <= (head ? 3 : 0)) out.push('(no readable messages)');
+  return out.join('\n');
+}
+
+function extractMessage(rec) {
+  if (!rec || typeof rec !== 'object') return null;
+
+  // Claude shape: {type:'user'|'assistant', message:{role, content}}
+  if (rec.type === 'user' || rec.type === 'assistant') {
+    const role = rec.type;
+    const content = rec.message && rec.message.content;
+    const text = textFromContent(content);
+    if (text) return `### ${role}\n${text}`;
+    return null;
+  }
+  // Codex shape: {type:'response_item', payload:{type:'message', role, content}}
+  if (rec.type === 'response_item' && rec.payload && rec.payload.type === 'message') {
+    const role = rec.payload.role || 'assistant';
+    const text = textFromContent(rec.payload.content);
+    if (text) return `### ${role}\n${text}`;
+  }
+  return null;
+}
+
+function textFromContent(content) {
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    const parts = [];
+    for (const b of content) {
+      if (b && typeof b.text === 'string') parts.push(b.text);
+    }
+    return parts.join('\n').trim();
+  }
+  return '';
 }
 
 export function renderTable(sessions, nowMs = Date.now()) {
@@ -252,7 +316,7 @@ export async function pickSession(initialSessions) {
     } else {
       lines.push(`${DIM}─${RESET}`);
       lines.push(
-        `${DIM}↑↓/wheel move · ←→ tab · ⏎ resume · r rename · d delete · / search · Esc quit${RESET}`
+        `${DIM}↑↓/wheel move · ←→ tab · ⏎ open (resume/view) · r rename · d delete · / search · Esc quit${RESET}`
       );
     }
 

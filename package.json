@@ -1,6 +1,6 @@
 {
   "name": "resession",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Global LRU session picker for Claude Code & Codex — list every session across all projects by most-recent-use and resume natively.",
   "type": "module",
   "bin": {
@@ -15,7 +15,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "start": "node bin/resession.js"
+    "start": "node bin/resession.cjs"
   },
   "keywords": [
     "claude",

@@ -36,12 +36,36 @@ Options:
 | `--here` | Only sessions from the current git repo's worktrees |
 | `--all` | Parse/show every session (default: newest 50) |
 | `--limit <N>` | Cap how many sessions to show/parse |
+| `--local` | Only local sessions (ignore remote) |
+| `--remote` | Only remote sessions |
 | `--json` | (with `ls`) print raw JSON instead of a table |
 | `--dry-run` | Print the resume command instead of executing it |
 | `-h`, `--help` / `-v`, `--version` | Help / version |
 
 In the picker: type to fuzzy-filter (by project, title, branch, agent), arrow-keys to move,
-**Enter** to resume, **Esc**/**Ctrl-C** to cancel.
+**Enter** to open, **Esc**/**Ctrl-C** to cancel.
+
+## Cross-device sync (optional)
+
+By default `resession` is purely local. If you run a small sync server (see
+[`server/`](server/)), you can view sessions from **all** your machines on any device.
+
+```
+resession login <url> <token> [--device <name>]   # connect to your server
+resession push                                     # upload this machine's sessions
+resession pull                                     # refresh the remote session list
+resession logout                                   # disconnect
+```
+
+After `pull`, `resession ls` / the picker show a **device** column. Sessions from other
+machines are marked ☁ and are **read-only**: pressing Enter downloads the transcript and
+opens it in your pager (it does not try to resume on the wrong machine). Local sessions
+behave exactly as before — fully resumable. Not logging in changes nothing.
+
+> Why read-only for remote: a session is bound to its original `cwd`, code, and git state.
+> Viewing the history across devices is reliable; resuming "the work" on a machine that
+> lacks that workspace is not, so it is intentionally not offered.
+
 
 ## How resume works
 

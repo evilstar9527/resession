@@ -6,12 +6,13 @@ FROM docker.evilstarss.com/library/node:22-slim
 WORKDIR /app
 
 COPY package.json ./
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
-  && npm install --omit=dev --no-audit --no-fund \
-  && apt-get purge -y python3 make g++ \
-  && apt-get autoremove -y \
-  && rm -rf /var/lib/apt/lists/*
+# better-sqlite3 is an OPTIONAL dependency. We try a prebuilt-only install (no
+# native compile, no apt toolchain) so the build stays fast and offline-friendly.
+# If the prebuilt binary isn't available, the server transparently falls back to
+# a zero-dependency JSON index (see store.js) — no functionality is lost for the
+# small-team scale this serves.
+ENV npm_config_build_from_source=false
+RUN npm install --omit=dev --no-audit --no-fund || npm install --omit=dev --omit=optional --no-audit --no-fund
 
 COPY index.js store.js ./
 

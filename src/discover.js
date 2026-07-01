@@ -100,15 +100,17 @@ function* walkJsonl(root, nameFilter) {
   }
 }
 
-function* iterJsonlHead(filePath, maxLines = MAX_HEAD_LINES) {
-  let raw;
+function readJsonlLines(filePath) {
   try {
-    raw = fs.readFileSync(filePath, 'utf8');
+    return fs.readFileSync(filePath, 'utf8').split('\n');
   } catch {
-    return;
+    return [];
   }
+}
+
+function* iterJsonlHead(lines, maxLines = MAX_HEAD_LINES) {
   let count = 0;
-  for (const line of raw.split('\n')) {
+  for (const line of lines) {
     if (count >= maxLines) return;
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -119,6 +121,26 @@ function* iterJsonlHead(filePath, maxLines = MAX_HEAD_LINES) {
       // skip malformed line
     }
   }
+}
+
+// An explicit rename (Claude Code's /rename, Codex's `thread_name_updated`) can
+// land anywhere in the file — often well past MAX_HEAD_LINES for a long-running
+// session — so it needs its own full-file scan rather than the capped head
+// iterator above. `marker` is a cheap substring pre-filter so we only pay the
+// JSON.parse cost on lines that could possibly match. Later matches win, since a
+// session can be renamed more than once.
+function scanForRename(lines, marker, extract) {
+  let found = null;
+  for (const line of lines) {
+    if (!line.includes(marker)) continue;
+    try {
+      const name = extract(JSON.parse(line.trim()));
+      if (name) found = name;
+    } catch {
+      // skip malformed line
+    }
+  }
+  return found;
 }
 
 function fileMtimeMs(filePath) {
@@ -153,7 +175,8 @@ function claudeSessionMeta(filePath) {
   let createdAt = null;
   let version = null;
 
-  for (const rec of iterJsonlHead(filePath)) {
+  const lines = readJsonlLines(filePath);
+  for (const rec of iterJsonlHead(lines)) {
     if (!rec || typeof rec !== 'object') continue;
     cwd = cwd || rec.cwd || null;
     sessionId = rec.sessionId || sessionId;
@@ -182,12 +205,24 @@ function claudeSessionMeta(filePath) {
   }
 
   if (!cwd) return null;
+
+  // /rename writes a custom-title record, which always wins over the derived title
+  // above (first message / ai-title) and can appear anywhere in the file.
+  const customTitle = scanForRename(lines, '"type":"custom-title"', (rec) =>
+    rec && rec.type === 'custom-title' && typeof rec.customTitle === 'string'
+      ? rec.customTitle.trim() || null
+      : null
+  );
+  const renamed = !!customTitle;
+  if (customTitle) title = customTitle;
+
   const mtime = fileMtimeMs(filePath);
   return {
     source: 'claude',
     sessionId,
     cwd,
     title,
+    renamed,
     gitBranch,
     createdAt,
     updatedAt: isoFromMs(mtime),
@@ -206,7 +241,8 @@ function codexSessionMeta(filePath) {
   let model = null;
   let version = null;
 
-  for (const rec of iterJsonlHead(filePath)) {
+  const lines = readJsonlLines(filePath);
+  for (const rec of iterJsonlHead(lines)) {
     if (!rec || typeof rec !== 'object') continue;
     const ts = rec.timestamp;
     if (typeof ts === 'string' && (createdAt === null || ts < createdAt)) createdAt = ts;
@@ -247,12 +283,24 @@ function codexSessionMeta(filePath) {
   }
   if (!cwd) return null;
 
+  // Codex's rename ("/rename" in the TUI) emits a thread_name_updated event, which
+  // always wins over the derived title above and can appear anywhere in the file.
+  const renamedTitle = scanForRename(lines, 'thread_name_updated', (rec) => {
+    const payload = rec && rec.payload;
+    return payload && payload.type === 'thread_name_updated' && typeof payload.thread_name === 'string'
+      ? payload.thread_name.trim() || null
+      : null;
+  });
+  const renamed = !!renamedTitle;
+  if (renamedTitle) title = renamedTitle;
+
   const mtime = fileMtimeMs(filePath);
   return {
     source: 'codex',
     sessionId,
     cwd,
     title,
+    renamed,
     gitBranch,
     createdAt,
     updatedAt: isoFromMs(mtime),
